@@ -18,6 +18,19 @@
   .add .row > button { padding: 12px 14px; }
   .hint { color: var(--muted); font-size: 13px; margin: 0; }
 
+  .ac-wrap { position: relative; }
+  .ac { list-style: none; margin: 4px 0 0; padding: 4px; position: absolute; left: 0; right: 0; top: 100%; z-index: 10;
+        background: var(--surface); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 12px 32px #000a; }
+  .ac li { display: flex; align-items: center; gap: 10px; padding: 8px; border-radius: 8px; cursor: pointer; }
+  .ac li.active, .ac li:hover { background: var(--surface-2); }
+  .ac img { width: 36px; height: 36px; border-radius: 50%; object-fit: cover; flex: none; background: var(--surface-2); }
+  .ac .meta { flex: 1; min-width: 0; }
+  .ac .t { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ac .s { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ac .tag { font-size: 12px; color: var(--muted); flex: none; }
+  .ac .msg { color: var(--muted); font-size: 14px; cursor: default; }
+  .ac .msg:hover { background: none; }
+
   .log { list-style: none; padding: 0; margin: 4px 0 0; display: grid; gap: 4px; font-size: 14px; }
   .log .ok { color: var(--ok); }
   .log .bad { color: var(--err); }
@@ -47,7 +60,10 @@
   </div>
 
   <form class="add" id="add">
-    <textarea id="text" placeholder="Paste YouTube links (videos or channels), one or many" autocomplete="off" autocapitalize="off" spellcheck="false"></textarea>
+    <div class="ac-wrap">
+      <textarea id="text" placeholder="Paste YouTube links, or type @name to find a channel" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"></textarea>
+      <ul class="ac" id="ac" role="listbox" hidden></ul>
+    </div>
     <div class="row">
       <div class="score">
         <button type="button" data-step="-5" aria-label="Score minus 5">−</button>
@@ -57,7 +73,7 @@
       <button type="button" id="paste" class="grow">Paste &amp; add</button>
       <button type="submit" class="primary" id="submit">Add</button>
     </div>
-    <p class="hint">Pasting a link into the box adds it right away. Re-adding an existing link updates its score.</p>
+    <p class="hint">Pasting a link into the box adds it right away. Type @name to search channels. Re-adding an existing item updates its score.</p>
     <ul class="log" id="log"></ul>
   </form>
 
@@ -107,10 +123,12 @@
       input.addEventListener('change', async () => {
         input.value = clamp(input.value);
         try {
+          // Save without re-sorting, so rows don't jump while arrowing through scores.
+          // The new order shows up after the next add/delete or reload.
           await api('PATCH', `/api/${kind}/${it.id}`, { score: Number(input.value) });
+          it.score = Number(input.value);
           input.classList.add('saved');
           setTimeout(() => input.classList.remove('saved'), 800);
-          load();
         } catch (e) { alert(e.message); }
       });
       const del = el('button', { type: 'button', className: 'del', textContent: '✕', title: 'Delete' });
@@ -163,7 +181,85 @@
     }
   }
 
-  $('add').addEventListener('submit', (e) => { e.preventDefault(); add(text.value); });
+  $('add').addEventListener('submit', (e) => { e.preventDefault(); hideAc(); add(text.value); });
+
+  // ---- @channel autocomplete ----
+  const ac = $('ac');
+  let acItems = [], acIndex = -1, acTimer = null, acSeq = 0;
+
+  function hideAc() {
+    clearTimeout(acTimer);
+    acSeq++;
+    ac.hidden = true;
+    acItems = [];
+    acIndex = -1;
+  }
+
+  function acMessage(msg) {
+    acItems = [];
+    acIndex = -1;
+    ac.replaceChildren(el('li', { className: 'msg', textContent: msg }));
+    ac.hidden = false;
+  }
+
+  function renderAc() {
+    if (!acItems.length) return acMessage('No channels found');
+    ac.replaceChildren(...acItems.map((c, i) => {
+      const li = el('li', { className: i === acIndex ? 'active' : '', role: 'option' },
+        el('img', { src: c.avatar, alt: '', referrerPolicy: 'no-referrer' }),
+        el('div', { className: 'meta' },
+          el('div', { className: 't', textContent: c.name }),
+          el('div', { className: 's', textContent: [c.handle, c.subs].filter(Boolean).join(' · ') })),
+        c.score !== null ? el('span', { className: 'tag', textContent: `added · ${c.score}` }) : '');
+      // pointerdown + preventDefault keeps focus in the textarea (no keyboard flicker on mobile).
+      li.addEventListener('pointerdown', (e) => { e.preventDefault(); pickAc(i); });
+      return li;
+    }));
+    ac.hidden = false;
+  }
+
+  function pickAc(i) {
+    const c = acItems[i];
+    if (!c) return;
+    hideAc();
+    text.value = 'https://www.youtube.com' + c.path;
+    add(text.value);
+  }
+
+  text.addEventListener('input', () => {
+    const m = text.value.trim().match(/^@(\S{2,})$/);
+    if (!m || /youtu\.?be/i.test(m[1])) return hideAc();
+    clearTimeout(acTimer);
+    const seq = ++acSeq;
+    acTimer = setTimeout(async () => {
+      if (ac.hidden) acMessage('Searching…');
+      try {
+        const { results } = await api('GET', '/api/search-channels?q=' + encodeURIComponent(m[1]));
+        if (seq !== acSeq) return;
+        acItems = results;
+        acIndex = results.length ? 0 : -1;
+        renderAc();
+      } catch (e) {
+        if (seq === acSeq) acMessage('Search failed: ' + e.message);
+      }
+    }, 300);
+  });
+
+  text.addEventListener('keydown', (e) => {
+    if (ac.hidden) return;
+    if (e.key === 'Escape') { hideAc(); return; }
+    if (!acItems.length) return;
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      acIndex = (acIndex + (e.key === 'ArrowDown' ? 1 : -1) + acItems.length) % acItems.length;
+      renderAc();
+    } else if (e.key === 'Enter' && acIndex >= 0) {
+      e.preventDefault();
+      pickAc(acIndex);
+    }
+  });
+
+  text.addEventListener('blur', () => setTimeout(hideAc, 150));
 
   // Pasting a link into the empty box submits immediately.
   text.addEventListener('paste', (e) => {

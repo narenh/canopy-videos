@@ -41,6 +41,7 @@ const VIDEO_ID = /^[\w-]{11}$/;
 function parseUrl(raw) {
   let s = raw.trim();
   if (!s) return null;
+  if (/^@[\w.\-\u00C0-\uFFFF]+$/.test(s)) return { type: 'channel', path: '/' + s };
   if (!/^https?:\/\//i.test(s)) s = 'https://' + s;
   let u;
   try { u = new URL(s); } catch { return null; }
@@ -134,6 +135,53 @@ async function fetchChannel(channelPath) {
   }
 
   return { id, name, handle, avatar, url: handle ? `https://www.youtube.com/${handle}` : `https://www.youtube.com/channel/${id}` };
+}
+
+const searchCache = new Map();
+
+async function searchChannels(q) {
+  const key = q.toLowerCase();
+  const hit = searchCache.get(key);
+  if (hit && Date.now() - hit.at < 10 * 60 * 1000) return hit.results;
+
+  // sp=EgIQAg%3D%3D is YouTube's "type: channel" search filter.
+  const url = `https://www.youtube.com/results?search_query=${encodeURIComponent(q)}&sp=EgIQAg%253D%253D`;
+  const r = await fetch(url, {
+    headers: { 'User-Agent': UA, 'Accept-Language': 'en-US,en;q=0.9', Cookie: 'SOCS=CAI; CONSENT=YES+' },
+    signal: AbortSignal.timeout(10000),
+  });
+  if (!r.ok) throw new Error(`search returned ${r.status}`);
+  const html = await r.text();
+  const m = html.match(/var ytInitialData = (\{.*?\});<\/script>/s);
+  if (!m) throw new Error('could not parse search results');
+
+  const found = [];
+  (function walk(o) {
+    if (!o || typeof o !== 'object' || found.length >= 8) return;
+    if (o.channelRenderer) { found.push(o.channelRenderer); return; }
+    for (const v of Object.values(o)) walk(v);
+  })(JSON.parse(m[1]));
+
+  const results = found.map((c) => {
+    const thumbs = c.thumbnail?.thumbnails || [];
+    let avatar = thumbs.length ? thumbs[thumbs.length - 1].url : '';
+    if (avatar.startsWith('//')) avatar = 'https:' + avatar;
+    const base = c.navigationEndpoint?.browseEndpoint?.canonicalBaseUrl || '';
+    // YouTube puts the @handle and subscriber count in inconsistent fields.
+    const texts = [c.subscriberCountText?.simpleText, c.videoCountText?.simpleText].filter(Boolean);
+    return {
+      id: c.channelId,
+      name: c.title?.simpleText || '',
+      handle: base.startsWith('/@') ? decodeURIComponent(base.slice(1)) : null,
+      path: base || `/channel/${c.channelId}`,
+      avatar,
+      subs: texts.find((t) => /subscriber/i.test(t)) || '',
+    };
+  }).filter((c) => c.id);
+
+  searchCache.set(key, { at: Date.now(), results });
+  if (searchCache.size > 200) searchCache.delete(searchCache.keys().next().value);
+  return results;
 }
 
 async function addLink(raw, score) {
@@ -351,6 +399,20 @@ async function handle(req, res) {
 
       if (req.method === 'GET' && p === '/api/items') {
         return json(res, 200, { channels: [...db.channels].sort(byScore), videos: [...db.videos].sort(byScore) });
+      }
+
+      if (req.method === 'GET' && p === '/api/search-channels') {
+        const q = (url.searchParams.get('q') || '').trim().replace(/^@/, '').slice(0, 100);
+        if (!q) return json(res, 200, { results: [] });
+        try {
+          const results = (await searchChannels(q)).map((c) => {
+            const saved = db.channels.find((x) => x.id === c.id);
+            return { ...c, score: saved ? saved.score : null };
+          });
+          return json(res, 200, { results });
+        } catch (e) {
+          return json(res, 502, { error: e.message });
+        }
       }
 
       if (req.method === 'POST' && p === '/api/items') {

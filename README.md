@@ -3,7 +3,7 @@
 A small site for sharing YouTube videos and channels. It has no dependencies, uses one Node file, and keeps its data in a JSON file.
 
 - `/` lists channels in a horizontal row of round avatars, with a grid of videos below. Items are sorted by score, highest first, and scores are never shown.
-- `/edit` is the admin page, behind a password. Paste one or more YouTube links (videos or channels, in any common URL form, including `?si=` share links) with a score from 0 to 100; the default is 80.
+- `/edit` is the admin page, behind a password. Paste one or more YouTube links (videos or channels, in any common URL form, including `?si=` share links) with a score from 0 to 100; the default is 80. Typing `@name` searches YouTube channels as you type.
   - Pasting a link into the empty box adds it immediately.
   - **Paste & add** reads the clipboard and adds in one tap.
   - Pasting a link that is already saved updates its score.
