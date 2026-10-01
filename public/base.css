@@ -8,6 +8,9 @@
   --accent: #ff4d4d;
   --ok: #4ade80;
   --err: #f87171;
+  --info-bg: #0f1d33;
+  --info-border: #1e3a64;
+  --info-text: #c7dcfb;
   --radius: 12px;
   --gutter: 16px;
 }
@@ -126,11 +129,13 @@ main, .top {
 .vchan { margin-top: 2px; font-size: 13px; color: var(--muted); }
 
 .vnote {
-  margin: 8px 0 0;
-  padding-left: 10px;
-  border-left: 2px solid var(--border);
+  margin: 10px 0 0;
+  padding: 10px 12px;
+  background: var(--info-bg);
+  border: 1px solid var(--info-border);
+  border-radius: 10px;
   font-size: 14px;
-  color: #c9c9cf;
+  color: var(--info-text);
   white-space: pre-line;
   overflow-wrap: anywhere;
 }
