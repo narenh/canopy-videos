@@ -8,7 +8,9 @@ const crypto = require('node:crypto');
 const PORT = Number(process.env.PORT) || 3000;
 const DATA_DIR = process.env.DATA_DIR || '/data';
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || '';
-const SITE_TITLE = process.env.SITE_TITLE || 'Canopy';
+const SITE_NAME = 'Canopy';
+const HOME_HEADING = 'Recommended';
+const HOME_TITLE = 'Recommended Videos - Canopy';
 
 const DB_FILE = path.join(DATA_DIR, 'db.json');
 const AVATAR_DIR = path.join(DATA_DIR, 'avatars');
@@ -294,7 +296,7 @@ function renderHome() {
 
   const empty = !channels.length && !videos.length ? '<p class="empty">Nothing here yet.</p>' : '';
 
-  return page(SITE_TITLE, `<header class="top"><h1>${esc(SITE_TITLE)}</h1></header>
+  return page(HOME_TITLE, `<header class="top"><h1>${esc(HOME_HEADING)}</h1></header>
 <main>
 ${channelHtml}
 ${videoHtml}
@@ -303,9 +305,9 @@ ${empty}
 }
 
 function renderLogin(error) {
-  return page(`Sign in · ${SITE_TITLE}`, `<main class="login">
+  return page(`Sign in · ${SITE_NAME}`, `<main class="login">
   <form method="post" action="/edit/login">
-    <h1>${esc(SITE_TITLE)}</h1>
+    <h1>${esc(SITE_NAME)}</h1>
     ${error ? `<p class="err">${esc(error)}</p>` : ''}
     <input type="password" name="password" placeholder="Password" autocomplete="current-password" autofocus required>
     <button type="submit">Sign in</button>
@@ -388,7 +390,7 @@ async function handle(req, res) {
     }
 
     if (req.method === 'GET' && p === '/edit') {
-      return send(res, 200, page(`Edit · ${SITE_TITLE}`, EDIT_HTML), { 'Cache-Control': 'no-store' });
+      return send(res, 200, page(`Edit · ${SITE_NAME}`, EDIT_HTML), { 'Cache-Control': 'no-store' });
     }
 
     if (p.startsWith('/api/')) {

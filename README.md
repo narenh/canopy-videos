@@ -16,7 +16,6 @@ A small site for sharing YouTube videos and channels. It has no dependencies, us
 - Persistent storage: a volume mounted at **`/data`**
 - Environment:
   - `ADMIN_PASSWORD` (required; `/edit` is disabled without it)
-  - `SITE_TITLE` (optional; default `Canopy`)
 
 Data is stored in `/data/db.json`. Channel avatars are cached in `/data/avatars/`. Video thumbnails load from `i.ytimg.com`.
 
