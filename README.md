@@ -5,8 +5,9 @@ A small site for sharing YouTube videos and channels. It has no dependencies, us
 - `/` lists channels in a horizontal row of round avatars, with a grid of videos below. Items are sorted by score, highest first, and scores are never shown.
 - `/edit` is the admin page, behind a password. Paste one or more YouTube links (videos or channels, in any common URL form, including `?si=` share links) with a score from 0 to 100; the default is 80. Typing `@name` searches YouTube channels as you type.
   - Pasting a link into the empty box adds it immediately.
-  - **Paste & add** reads the clipboard and adds in one tap.
+  - **Paste** reads the clipboard and adds in one tap.
   - Pasting a link that is already saved updates its score.
+  - An optional note can be added to videos, either in the add form (set it before pasting) or with the ✎ button on each video. Notes show under the video on `/`.
   - Scores can be edited and items deleted from the lists below the box.
 
 ## Deploy (Coolify)

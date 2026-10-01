@@ -9,8 +9,8 @@
   .add textarea { min-height: 56px; resize: vertical; }
   .row { display: flex; gap: 8px; align-items: stretch; }
   .score { display: flex; align-items: stretch; }
-  .score input { width: 64px; text-align: center; border-radius: 0; border-left: 0; border-right: 0; padding: 12px 4px; }
-  .score button { padding: 0 14px; }
+  .score input { width: 52px; text-align: center; border-radius: 0; border-left: 0; border-right: 0; padding: 12px 4px; }
+  .score button { padding: 0 12px; }
   .score button:first-child { border-radius: 10px 0 0 10px; }
   .score button:last-child { border-radius: 0 10px 10px 0; }
   .row .grow { flex: 1; }
@@ -38,15 +38,20 @@
   h2 { font-size: 15px; color: var(--muted); font-weight: 600; margin: 28px 0 8px; }
   h2 small { font-weight: 400; }
   .items { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: minmax(0, 1fr); }
-  .item { display: flex; align-items: center; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--border); }
+  .item { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 8px 0; border-bottom: 1px solid var(--border); }
+  .item .note { flex: 1 0 100%; min-height: 0; padding: 8px 10px; font-size: 15px; resize: none; overflow: hidden; }
+  .item .note[hidden] { display: none; }
+  .item .note.saved { outline: 2px solid var(--ok); }
+  .item .icon { padding: 8px 10px; color: var(--muted); flex: none; }
+  .item .icon.on { color: var(--text); }
+  #note { min-height: 0; resize: none; overflow: hidden; }
   .item img { width: 64px; height: 36px; object-fit: cover; border-radius: 6px; background: var(--surface-2); flex: none; }
   .item.ch img { width: 40px; height: 40px; border-radius: 50%; margin: 0 12px; }
-  .item .meta { flex: 1; min-width: 0; }
+  .item .meta { flex: 1 1 0; min-width: 0; }
   .item .t { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .item .s { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .item input { width: 64px; padding: 8px 4px; text-align: center; flex: none; }
   .item input.saved { outline: 2px solid var(--ok); }
-  .item .del { padding: 8px 10px; color: var(--muted); flex: none; }
   .pad { height: 40px; }
 </style>
 
@@ -64,16 +69,17 @@
       <textarea id="text" placeholder="Paste YouTube links, or type @name to find a channel" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"></textarea>
       <ul class="ac" id="ac" role="listbox" hidden></ul>
     </div>
+    <textarea id="note" rows="1" placeholder="Note for videos (optional)" maxlength="2000"></textarea>
     <div class="row">
       <div class="score">
         <button type="button" data-step="-5" aria-label="Score minus 5">−</button>
         <input id="score" type="number" inputmode="numeric" min="0" max="100" value="80" aria-label="Score">
         <button type="button" data-step="5" aria-label="Score plus 5">+</button>
       </div>
-      <button type="button" id="paste" class="grow">Paste &amp; add</button>
+      <button type="button" id="paste" class="grow">Paste</button>
       <button type="submit" class="primary" id="submit">Add</button>
     </div>
-    <p class="hint">Pasting a link into the box adds it right away. Type @name to search channels. Re-adding an existing item updates its score.</p>
+    <p class="hint">Pasting a link into the box adds it right away. Type @name to search channels. Set the score and note before pasting. Re-adding an existing item updates it.</p>
     <ul class="log" id="log"></ul>
   </form>
 
@@ -88,7 +94,7 @@
 <script>
 (() => {
   const $ = (id) => document.getElementById(id);
-  const text = $('text'), score = $('score'), log = $('log'), submit = $('submit');
+  const text = $('text'), score = $('score'), log = $('log'), submit = $('submit'), noteBox = $('note');
   let busy = false;
 
   const api = async (method, url, body) => {
@@ -131,7 +137,7 @@
           setTimeout(() => input.classList.remove('saved'), 800);
         } catch (e) { alert(e.message); }
       });
-      const del = el('button', { type: 'button', className: 'del', textContent: '✕', title: 'Delete' });
+      const del = el('button', { type: 'button', className: 'icon', textContent: '✕', title: 'Delete' });
       del.addEventListener('click', async () => {
         if (!confirm(`Delete “${isCh ? it.name : it.title}”?`)) return;
         try { await api('DELETE', `/api/${kind}/${it.id}`); load(); } catch (e) { alert(e.message); }
@@ -142,8 +148,38 @@
         el('div', { className: 'meta' },
           el('div', { className: 't', textContent: isCh ? it.name : it.title }),
           el('div', { className: 's', textContent: isCh ? (it.handle || it.id) : it.channelName })),
-        input, del);
+        input, ...(isCh ? [del] : noteControls(it, del)));
     }));
+  }
+
+  function autoGrow(ta) {
+    ta.style.height = 'auto';
+    ta.style.height = ta.scrollHeight + 2 + 'px';
+  }
+
+  function noteControls(it, del) {
+    const ta = el('textarea', { className: 'note', rows: 1, maxLength: 2000, placeholder: 'Note (shown under the video)', value: it.note || '' });
+    ta.hidden = !it.note;
+    const btn = el('button', { type: 'button', className: 'icon' + (it.note ? ' on' : ''), textContent: '✎', title: 'Note' });
+    btn.addEventListener('click', () => {
+      ta.hidden = false;
+      autoGrow(ta);
+      ta.focus();
+    });
+    ta.addEventListener('input', () => autoGrow(ta));
+    ta.addEventListener('change', async () => {
+      try {
+        const saved = await api('PATCH', `/api/videos/${it.id}`, { note: ta.value });
+        it.note = saved.note;
+        ta.value = saved.note;
+        btn.classList.toggle('on', !!saved.note);
+        ta.classList.add('saved');
+        setTimeout(() => ta.classList.remove('saved'), 800);
+      } catch (e) { alert(e.message); }
+    });
+    ta.addEventListener('blur', () => { if (!ta.value.trim()) ta.hidden = true; });
+    requestAnimationFrame(() => autoGrow(ta));
+    return [btn, del, ta];
   }
 
   async function load() {
@@ -160,7 +196,7 @@
     submit.disabled = true;
     submit.textContent = 'Adding…';
     try {
-      const { results } = await api('POST', '/api/items', { text: raw, score: clamp(score.value) });
+      const { results } = await api('POST', '/api/items', { text: raw, score: clamp(score.value), note: noteBox.value });
       const failed = [];
       for (const r of results) {
         const msg = r.ok
@@ -171,6 +207,7 @@
       }
       while (log.children.length > 8) log.lastChild.remove();
       text.value = failed.join('\n');
+      if (!failed.length) { noteBox.value = ''; autoGrow(noteBox); }
       await load();
     } catch (e) {
       log.prepend(el('li', { className: 'bad', textContent: '✗ ' + e.message }));
@@ -182,6 +219,8 @@
   }
 
   $('add').addEventListener('submit', (e) => { e.preventDefault(); hideAc(); add(text.value); });
+
+  noteBox.addEventListener('input', () => autoGrow(noteBox));
 
   // ---- @channel autocomplete ----
   const ac = $('ac');

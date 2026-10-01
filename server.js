@@ -186,21 +186,27 @@ async function searchChannels(q) {
   return results;
 }
 
-async function addLink(raw, score) {
+const MAX_NOTE = 2000;
+const cleanNote = (n) => String(n ?? '').replace(/\r\n?/g, '\n').trim().slice(0, MAX_NOTE);
+
+async function addLink(raw, score, note) {
   const parsed = parseUrl(raw);
   if (!parsed) return { input: raw, ok: false, error: 'not a YouTube video or channel link' };
   try {
     if (parsed.type === 'video') {
-      const existing = db.videos.find((v) => v.id === parsed.id);
-      if (existing) {
-        existing.score = score;
+      // A blank note never wipes an existing one when re-adding.
+      const update = (v) => {
+        v.score = score;
+        if (note) v.note = note;
         save();
-        return { input: raw, ok: true, type: 'video', title: existing.title, updated: true };
-      }
+        return { input: raw, ok: true, type: 'video', title: v.title, updated: true };
+      };
+      const existing = db.videos.find((v) => v.id === parsed.id);
+      if (existing) return update(existing);
       const v = await fetchVideo(parsed.id);
       const again = db.videos.find((x) => x.id === v.id);
-      if (again) { again.score = score; save(); return { input: raw, ok: true, type: 'video', title: again.title, updated: true }; }
-      db.videos.push({ ...v, score, addedAt: new Date().toISOString() });
+      if (again) return update(again);
+      db.videos.push({ ...v, score, note, addedAt: new Date().toISOString() });
       save();
       return { input: raw, ok: true, type: 'video', title: v.title };
     }
@@ -286,11 +292,14 @@ function renderHome() {
 
   const videoHtml = videos.length
     ? `<section class="grid" aria-label="Videos">
-  ${videos.map((v) => `<a class="video" href="https://www.youtube.com/watch?v=${esc(v.id)}" target="_blank" rel="noopener">
-    <div class="thumb"><img src="${esc(v.thumbnail)}" alt="" loading="lazy" referrerpolicy="no-referrer"></div>
-    <div class="vtitle">${esc(v.title)}</div>
-    ${v.channelName ? `<div class="vchan">${esc(v.channelName)}</div>` : ''}
-  </a>`).join('\n  ')}
+  ${videos.map((v) => `<article class="video">
+    <a href="https://www.youtube.com/watch?v=${esc(v.id)}" target="_blank" rel="noopener">
+      <div class="thumb"><img src="${esc(v.thumbnail)}" alt="" loading="lazy" referrerpolicy="no-referrer"></div>
+      <div class="vtitle">${esc(v.title)}</div>
+      ${v.channelName ? `<div class="vchan">${esc(v.channelName)}</div>` : ''}
+    </a>
+    ${v.note ? `<p class="vnote">${esc(v.note)}</p>` : ''}
+  </article>`).join('\n  ')}
 </section>`
     : '';
 
@@ -424,7 +433,8 @@ async function handle(req, res) {
         const links = String(body.text || '').match(/\S+/g) || [];
         if (!links.length) return json(res, 400, { error: 'no links' });
         const results = [];
-        for (const link of links.slice(0, 50)) results.push(await addLink(link, score));
+        const note = cleanNote(body.note);
+        for (const link of links.slice(0, 50)) results.push(await addLink(link, score, note));
         return json(res, 200, { results });
       }
 
@@ -435,9 +445,12 @@ async function handle(req, res) {
         if (idx < 0) return json(res, 404, { error: 'not found' });
         if (req.method === 'PATCH') {
           const body = JSON.parse((await readBody(req)) || '{}');
-          const score = clampScore(body.score);
-          if (score === null) return json(res, 400, { error: 'bad score' });
-          list[idx].score = score;
+          if ('score' in body) {
+            const score = clampScore(body.score);
+            if (score === null) return json(res, 400, { error: 'bad score' });
+            list[idx].score = score;
+          }
+          if ('note' in body && m[1] === 'videos') list[idx].note = cleanNote(body.note);
           save();
           return json(res, 200, list[idx]);
         }

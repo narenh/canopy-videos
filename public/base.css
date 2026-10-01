@@ -94,7 +94,8 @@ main, .top {
   padding: 8px 0 40px;
 }
 
-.video { display: block; min-width: 0; }
+.video { min-width: 0; }
+.video > a { display: block; }
 
 .thumb {
   aspect-ratio: 16 / 9;
@@ -111,7 +112,7 @@ main, .top {
   transition: transform .2s;
 }
 
-.video:hover .thumb img { transform: scale(1.03); }
+.video a:hover .thumb img { transform: scale(1.03); }
 
 .vtitle {
   margin-top: 10px;
@@ -123,6 +124,16 @@ main, .top {
 }
 
 .vchan { margin-top: 2px; font-size: 13px; color: var(--muted); }
+
+.vnote {
+  margin: 8px 0 0;
+  padding-left: 10px;
+  border-left: 2px solid var(--border);
+  font-size: 14px;
+  color: #c9c9cf;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
 
 .empty { color: var(--muted); padding: 40px 0; text-align: center; }
 
