@@ -1,0 +1,193 @@
+<style>
+  .bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 16px 0; }
+  .bar h1 { font-size: 20px; margin: 0; }
+  .bar nav { display: flex; gap: 8px; align-items: center; }
+  .bar nav a, .bar nav button { font-size: 14px; padding: 8px 12px; color: var(--muted); }
+  .bar form { margin: 0; }
+
+  .add { display: grid; gap: 10px; }
+  .add textarea { min-height: 56px; resize: vertical; }
+  .row { display: flex; gap: 8px; align-items: stretch; }
+  .score { display: flex; align-items: stretch; }
+  .score input { width: 64px; text-align: center; border-radius: 0; border-left: 0; border-right: 0; padding: 12px 4px; }
+  .score button { padding: 0 14px; }
+  .score button:first-child { border-radius: 10px 0 0 10px; }
+  .score button:last-child { border-radius: 0 10px 10px 0; }
+  .row .grow { flex: 1; }
+  .row button { white-space: nowrap; }
+  .add .row > button { padding: 12px 14px; }
+  .hint { color: var(--muted); font-size: 13px; margin: 0; }
+
+  .log { list-style: none; padding: 0; margin: 4px 0 0; display: grid; gap: 4px; font-size: 14px; }
+  .log .ok { color: var(--ok); }
+  .log .bad { color: var(--err); }
+
+  h2 { font-size: 15px; color: var(--muted); font-weight: 600; margin: 28px 0 8px; }
+  h2 small { font-weight: 400; }
+  .items { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: minmax(0, 1fr); }
+  .item { display: flex; align-items: center; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--border); }
+  .item img { width: 64px; height: 36px; object-fit: cover; border-radius: 6px; background: var(--surface-2); flex: none; }
+  .item.ch img { width: 40px; height: 40px; border-radius: 50%; margin: 0 12px; }
+  .item .meta { flex: 1; min-width: 0; }
+  .item .t { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .item .s { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .item input { width: 64px; padding: 8px 4px; text-align: center; flex: none; }
+  .item input.saved { outline: 2px solid var(--ok); }
+  .item .del { padding: 8px 10px; color: var(--muted); flex: none; }
+  .pad { height: 40px; }
+</style>
+
+<main>
+  <div class="bar">
+    <h1>Edit</h1>
+    <nav>
+      <a href="/">View site</a>
+      <form method="post" action="/edit/logout"><button type="submit">Sign out</button></form>
+    </nav>
+  </div>
+
+  <form class="add" id="add">
+    <textarea id="text" placeholder="Paste YouTube links (videos or channels), one or many" autocomplete="off" autocapitalize="off" spellcheck="false"></textarea>
+    <div class="row">
+      <div class="score">
+        <button type="button" data-step="-5" aria-label="Score minus 5">−</button>
+        <input id="score" type="number" inputmode="numeric" min="0" max="100" value="80" aria-label="Score">
+        <button type="button" data-step="5" aria-label="Score plus 5">+</button>
+      </div>
+      <button type="button" id="paste" class="grow">Paste &amp; add</button>
+      <button type="submit" class="primary" id="submit">Add</button>
+    </div>
+    <p class="hint">Pasting a link into the box adds it right away. Re-adding an existing link updates its score.</p>
+    <ul class="log" id="log"></ul>
+  </form>
+
+  <h2>Channels <small id="ccount"></small></h2>
+  <ul class="items" id="channels"></ul>
+
+  <h2>Videos <small id="vcount"></small></h2>
+  <ul class="items" id="videos"></ul>
+  <div class="pad"></div>
+</main>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const text = $('text'), score = $('score'), log = $('log'), submit = $('submit');
+  let busy = false;
+
+  const api = async (method, url, body) => {
+    const r = await fetch(url, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    if (r.status === 401) { location.reload(); throw new Error('signed out'); }
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.error || r.statusText);
+    return j;
+  };
+
+  const clamp = (n) => Math.max(0, Math.min(100, Math.round(Number(n)) || 0));
+
+  document.querySelectorAll('[data-step]').forEach((b) =>
+    b.addEventListener('click', () => { score.value = clamp(Number(score.value) + Number(b.dataset.step)); }));
+
+  function el(tag, props = {}, ...kids) {
+    const e = Object.assign(document.createElement(tag), props);
+    e.append(...kids);
+    return e;
+  }
+
+  function renderList(kind, items) {
+    const ul = $(kind);
+    ul.replaceChildren(...items.map((it) => {
+      const isCh = kind === 'channels';
+      const input = el('input', { type: 'number', inputMode: 'numeric', min: 0, max: 100, value: it.score });
+      input.setAttribute('aria-label', 'Score');
+      input.addEventListener('change', async () => {
+        input.value = clamp(input.value);
+        try {
+          await api('PATCH', `/api/${kind}/${it.id}`, { score: Number(input.value) });
+          input.classList.add('saved');
+          setTimeout(() => input.classList.remove('saved'), 800);
+          load();
+        } catch (e) { alert(e.message); }
+      });
+      const del = el('button', { type: 'button', className: 'del', textContent: '✕', title: 'Delete' });
+      del.addEventListener('click', async () => {
+        if (!confirm(`Delete “${isCh ? it.name : it.title}”?`)) return;
+        try { await api('DELETE', `/api/${kind}/${it.id}`); load(); } catch (e) { alert(e.message); }
+      });
+      const href = isCh ? it.url : `https://www.youtube.com/watch?v=${it.id}`;
+      return el('li', { className: 'item' + (isCh ? ' ch' : '') },
+        el('a', { href, target: '_blank', rel: 'noopener' }, el('img', { src: isCh ? it.avatar : it.thumbnail, alt: '', loading: 'lazy', referrerPolicy: 'no-referrer' })),
+        el('div', { className: 'meta' },
+          el('div', { className: 't', textContent: isCh ? it.name : it.title }),
+          el('div', { className: 's', textContent: isCh ? (it.handle || it.id) : it.channelName })),
+        input, del);
+    }));
+  }
+
+  async function load() {
+    const data = await api('GET', '/api/items');
+    renderList('channels', data.channels);
+    renderList('videos', data.videos);
+    $('ccount').textContent = data.channels.length ? `(${data.channels.length})` : '';
+    $('vcount').textContent = data.videos.length ? `(${data.videos.length})` : '';
+  }
+
+  async function add(raw) {
+    if (busy || !raw.trim()) return;
+    busy = true;
+    submit.disabled = true;
+    submit.textContent = 'Adding…';
+    try {
+      const { results } = await api('POST', '/api/items', { text: raw, score: clamp(score.value) });
+      const failed = [];
+      for (const r of results) {
+        const msg = r.ok
+          ? `${r.updated ? 'Updated' : 'Added'} ${r.type}: ${r.title} (${clamp(score.value)})`
+          : `${r.input} — ${r.error}`;
+        log.prepend(el('li', { className: r.ok ? 'ok' : 'bad', textContent: (r.ok ? '✓ ' : '✗ ') + msg }));
+        if (!r.ok) failed.push(r.input);
+      }
+      while (log.children.length > 8) log.lastChild.remove();
+      text.value = failed.join('\n');
+      await load();
+    } catch (e) {
+      log.prepend(el('li', { className: 'bad', textContent: '✗ ' + e.message }));
+    } finally {
+      busy = false;
+      submit.disabled = false;
+      submit.textContent = 'Add';
+    }
+  }
+
+  $('add').addEventListener('submit', (e) => { e.preventDefault(); add(text.value); });
+
+  // Pasting a link into the empty box submits immediately.
+  text.addEventListener('paste', (e) => {
+    const pasted = (e.clipboardData || window.clipboardData)?.getData('text') || '';
+    if (text.value.trim() === '' && /youtu\.?be/i.test(pasted)) {
+      e.preventDefault();
+      text.value = pasted;
+      add(pasted);
+    }
+  });
+
+  const pasteBtn = $('paste');
+  if (!navigator.clipboard?.readText) pasteBtn.hidden = true;
+  pasteBtn.addEventListener('click', async () => {
+    try {
+      const clip = await navigator.clipboard.readText();
+      if (!clip.trim()) return;
+      text.value = clip;
+      add(clip);
+    } catch {
+      text.focus();
+    }
+  });
+
+  load();
+})();
+</script>

@@ -1,0 +1,11 @@
+{
+  "name": "canopy-videos",
+  "private": true,
+  "description": "Tiny site for sharing YouTube videos and channels",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "DATA_DIR=./data ADMIN_PASSWORD=dev node server.js"
+  },
+  "engines": { "node": ">=20" }
+}
