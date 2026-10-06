@@ -93,11 +93,18 @@ main, .top {
 .grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 24px 16px;
-  padding: 8px 0 40px;
+  gap: 20px 16px;
+  padding: 0 0 40px;
+  margin-top: -12px;
+  /* Hide the first row's top hairline so lines only appear between rows. */
+  clip-path: inset(2px 0 0 0);
 }
 
-.video { min-width: 0; }
+.video {
+  min-width: 0;
+  padding-top: 20px;
+  border-top: 1px solid var(--border);
+}
 .video > a { display: block; }
 
 .thumb {
