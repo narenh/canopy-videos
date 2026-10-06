@@ -91,19 +91,32 @@ main, .top {
 /* ---- videos ---- */
 
 .grid {
+  --col-gap: 16px;
+  --row-gap: 40px;
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 20px 16px;
-  padding: 0 0 40px;
-  margin-top: -12px;
-  /* Hide the first row's top hairline so lines only appear between rows. */
-  clip-path: inset(2px 0 0 0);
+  gap: var(--row-gap) var(--col-gap);
+  padding-top: 8px;
+  margin-bottom: 40px;
+  /* Clips the hairline under the last row and its overhang past the outer columns. */
+  overflow: hidden;
 }
 
 .video {
+  position: relative;
   min-width: 0;
-  padding-top: 20px;
-  border-top: 1px solid var(--border);
+}
+
+/* Hairline under each row, extended into the column gaps so it reads as one
+   unbroken line. Items in a row share a height, so the segments line up. */
+.video::after {
+  content: "";
+  position: absolute;
+  left: calc(var(--col-gap) / -2);
+  right: calc(var(--col-gap) / -2);
+  bottom: calc(var(--row-gap) / -2);
+  height: 1px;
+  background: var(--border);
 }
 .video > a { display: block; }
 
